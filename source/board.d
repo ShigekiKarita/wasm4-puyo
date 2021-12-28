@@ -77,7 +77,7 @@ struct Board {
     }
   }
 
-  void update() {
+  bool fall() {
     bool changed = false;
     foreach_reverse (y; 0 .. 20) {
       foreach (x; 0 .. 20 - leftMargin) {
@@ -90,20 +90,54 @@ struct Board {
         }
       }
     }
-    if (!changed) newPuyo;
+    return changed;
   }
 
-  void swap(int xa, int ya, int xb, int yb) {
-    Puyo a = matrix[xa][ya];
-    a.x = xb;
-    a.y = yb;
 
-    Puyo b = matrix[xb][yb];
-    b.x = xa;
-    b.y = ya;
+  // Wipes <= 4 consecutive puyos.
+  int wipe() {
+    int n;
+    bool[nx][ny] del;
+    foreach (x; 0 .. nx) {
+      foreach (y; 0 .. ny) {
+        if (numConsective(x, y, matrix[x][y].color) >= 4) {
+          del[x][y] = true;
+          ++n;
+        }
+      }
+    }
+    if (n == 0) return 0;
+    foreach (x; 0 .. nx) {
+      foreach (y; 0 .. ny) {
+        if (del[x][y]) {
+          matrix[x][y] = Puyo(x, y);
+        }
+      }
+    }
+    return n;
+  }
 
-    matrix[xa][ya] = b;
-    matrix[xb][yb] = a;
+  bool gameover() const {
+    Puyo puyo = matrix[matrix.length / 2][0];
+    if (!puyo.empty && !puyo.canControl) return true;
+    puyo = matrix[matrix.length / 2 + 1][0];
+    if (!puyo.empty && !puyo.canControl) return true;
+    return false;
+  }
+
+  void newPuyo() {
+    if (gameover) return;
+    add(Puyo(/*x=*/matrix.length / 2,
+             /*y=*/0,
+             /*color=*/color.front[0][0],
+             /*canControl=*/true,
+             /*center=*/true));
+    add(Puyo(/*x=*/matrix.length / 2 + 1,
+             /*y=*/0,
+             /*color=*/color.front[0][1],
+             /*canControl=*/true,
+             /*center=*/false));
+    color.popFront();
   }
 
   void left() {
@@ -117,6 +151,7 @@ struct Board {
       }
     }
   }
+
   void right() {
     foreach_reverse (x; 0 .. nx) {
       foreach (y; 0 .. ny) {
@@ -154,22 +189,20 @@ struct Board {
   Puyo[ny][nx] matrix;
   RandomColor color;
 
-  void add(Puyo puyo) {
-    matrix[puyo.x][puyo.y] = puyo;
+  int numConsective(int x, int y, ushort color) {
+    if (empty(x, y) || matrix[x][y].color != color) return 0;
+    matrix[x][y].color = 0;
+    auto count = 1
+        + numConsective(x - 1, y, color)
+        + numConsective(x + 1, y, color)
+        + numConsective(x, y - 1, color)
+        + numConsective(x, y + 1, color);
+    matrix[x][y].color = color;
+    return count;
   }
 
-  void newPuyo() {
-    add(Puyo(/*x=*/matrix.length / 2,
-             /*y=*/0,
-             /*color=*/color.front[0][0],
-             /*canControl=*/true,
-             /*center=*/true));
-    add(Puyo(/*x=*/matrix.length / 2 + 1,
-             /*y=*/0,
-             /*color=*/color.front[0][1],
-             /*canControl=*/true,
-             /*center=*/false));
-    color.popFront();
+  void add(Puyo puyo) {
+    matrix[puyo.x][puyo.y] = puyo;
   }
 
   bool empty(int x, int y) const {
@@ -178,6 +211,19 @@ struct Board {
       return puyo.empty;
     }
     return false;
+  }
+
+  void swap(int xa, int ya, int xb, int yb) {
+    Puyo a = matrix[xa][ya];
+    a.x = xb;
+    a.y = yb;
+
+    Puyo b = matrix[xb][yb];
+    b.x = xa;
+    b.y = ya;
+
+    matrix[xa][ya] = b;
+    matrix[xb][yb] = a;
   }
 
   /// Returns true if swapped.
