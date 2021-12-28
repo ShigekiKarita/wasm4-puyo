@@ -9,14 +9,15 @@ struct Puyo {
   int x;
   int y;
   ushort color;
-  bool canControl = false;
+  bool canControl;
+  bool center;
 
   bool empty() const { return color == 0; }
 
   void draw() const {
     if (empty) return;
 
-    static immutable ubyte[] puyoGlyph = [
+    static immutable ubyte[] glyph = [
         0b11000011,
         0b10100101,
         0b00100100,
@@ -24,10 +25,9 @@ struct Puyo {
         0b11000011,
         0b00000000,
         0b10000001,
-        0b11000011,
-                                          ];
+        0b11000011];
     *w4.drawColors = color;
-    w4.blit(puyoGlyph.ptr, (x + leftMargin) * unit, y * unit, unit, unit, w4.blit1Bpp);
+    w4.blit(glyph.ptr, (x + leftMargin) * unit, y * unit, unit, unit, w4.blit1Bpp);
   }
 }
 
@@ -36,16 +36,16 @@ extern(C) int rand();
 
 struct RandomColor {
   bool empty = false;
-  ushort[2] front, next;
+  ushort[2][2] front;
 
   void popFront() {
-    front = next;
-    next[0] = randColor();
-    next[1] = randColor();
-
-    if (front[0] == 0 || front[1] == 0) {
-      front[0] = randColor();
-      front[1] = randColor();
+    front[0] = front[1];
+    front[1][0] = randColor();
+    front[1][1] = randColor();
+    // For initial popFront.
+    if (front[0][0] == 0) {
+      front[0][0] = randColor();
+      front[1][1] = randColor();
     }
   }
 
@@ -86,6 +86,7 @@ struct Board {
           changed = true;
         } else {
           matrix[x][y].canControl = false;
+          matrix[x][y].center = false;
         }
       }
     }
@@ -129,10 +130,22 @@ struct Board {
   }
 
   void rotate() {
-    // TODO(karita): rotate two puyos.
+    foreach (x; 0 .. nx) {
+      foreach (y; 0 .. ny) {
+        if (matrix[x][y].center) {
+          // Rotate clockwise.
+          if (swapInControlToEmpty(x - 1, y, x, y + 1)) return;
+          if (swapInControlToEmpty(x + 1, y, x, y - 1)) return;
+          if (swapInControlToEmpty(x, y - 1, x - 1, y)) return;
+          if (swapInControlToEmpty(x, y + 1, x + 1, y)) return;
+          // Controllable but cannot be rotated.
+          return;
+        }
+      }
+    }
   }
 
-  RandomColor nextColor() const { return color; }
+  auto nextColors() const { return color.front; }
 
  private:
   enum ny = w4.screenSize / unit;
@@ -146,8 +159,16 @@ struct Board {
   }
 
   void newPuyo() {
-    add(Puyo(matrix.length / 2, 0, color.front[0], true));
-    add(Puyo(matrix.length / 2 + 1, 0, color.front[1], true));
+    add(Puyo(/*x=*/matrix.length / 2,
+             /*y=*/0,
+             /*color=*/color.front[0][0],
+             /*canControl=*/true,
+             /*center=*/true));
+    add(Puyo(/*x=*/matrix.length / 2 + 1,
+             /*y=*/0,
+             /*color=*/color.front[0][1],
+             /*canControl=*/true,
+             /*center=*/false));
     color.popFront();
   }
 
@@ -155,6 +176,15 @@ struct Board {
     if (0 <= x && x < nx && 0 <= y && y < ny) {
       auto puyo = matrix[x][y];
       return puyo.empty;
+    }
+    return false;
+  }
+
+  /// Returns true if swapped.
+  bool swapInControlToEmpty(int xsrc, int ysrc, int xdst, int ydst) {
+    if (!empty(xsrc, ysrc) && matrix[xsrc][ysrc].canControl && empty(xdst, ydst)) {
+      swap(xsrc, ysrc, xdst, ydst);
+      return true;
     }
     return false;
   }

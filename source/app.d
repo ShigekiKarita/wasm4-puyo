@@ -1,6 +1,42 @@
 import w4 = wasm4;
 import board : Board, Puyo, unit, leftMargin;
 
+extern(C) void start() {
+  board.reset();
+}
+
+extern(C) void update() {
+  static uint frameCount;
+  ++frameCount;
+
+  input();
+
+  if (frameCount % frameRate == 0) {
+    board.update();
+    ++score;
+  }
+
+  board.draw();
+
+  // Draw boundary.
+  *w4.drawColors = 0x02;
+  w4.vline(leftMargin * unit, 0, 20 * unit);
+
+  // Draw infomation.
+  *w4.drawColors = 0x4;
+  w4.text("Score", 0, 0);
+  w4.text(itoa(score), 0, unit);
+  w4.text("Next", 0, unit * 3);
+  foreach (i, colors; board.nextColors) {
+    foreach (j, c; colors) {
+      Puyo(j - leftMargin, 4 + i * 2, c).draw();
+    }
+  }
+}
+
+private:
+
+// Global variables.
 Board board;
 int score = 0;
 uint frameRate = 10;
@@ -38,38 +74,4 @@ char* itoa(int i) {
   }
   *itoaHelper(s, i) = '\0';
   return buf.ptr;
-}
-
-extern(C) void start() {
-  board.reset();
-}
-
-extern(C) void update() {
-  static uint frameCount;
-  ++frameCount;
-
-  input();
-
-  if (frameCount % frameRate == 0) {
-    board.update();
-    ++score;
-  }
-
-  board.draw();
-
-  // Draw boundary.
-  *w4.drawColors = 0x02;
-  w4.vline(leftMargin * unit, 0, 20 * unit);
-
-  // Draw infomation.
-  *w4.drawColors = 0x4;
-  w4.text("Score", 0, 0);
-  w4.text(itoa(score), 0, unit);
-  w4.text("Next", 0, unit * 3);
-  foreach (i, color; board.nextColor.front) {
-    Puyo(i - leftMargin, 4, color).draw();
-  }
-  foreach (i, color; board.nextColor.next) {
-    Puyo(i - leftMargin, 6, color).draw();
-  }
 }
