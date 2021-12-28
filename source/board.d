@@ -6,15 +6,13 @@ enum unit = 8;
 enum leftMargin = 5;
 
 struct Puyo {
-  int x;
-  int y;
   ushort color;
-  bool canControl;
+  bool controllable;
   bool center;
 
   bool empty() const { return color == 0; }
 
-  void draw() const {
+  void draw(int x, int y) const {
     if (empty) return;
 
     static immutable ubyte[] glyph = [
@@ -27,7 +25,8 @@ struct Puyo {
         0b10000001,
         0b11000011];
     *w4.drawColors = color;
-    w4.blit(glyph.ptr, (x + leftMargin) * unit, y * unit, unit, unit, w4.blit1Bpp);
+    w4.blit(glyph.ptr, (x + leftMargin) * unit, y * unit, unit, unit,
+            w4.blit1Bpp);
   }
 }
 
@@ -42,11 +41,6 @@ struct RandomColor {
     front[0] = front[1];
     front[1][0] = randColor();
     front[1][1] = randColor();
-    // For initial popFront.
-    if (front[0][0] == 0) {
-      front[0][0] = randColor();
-      front[1][1] = randColor();
-    }
   }
 
  private:
@@ -59,20 +53,15 @@ struct Board {
   void reset() {
     foreach (ty; 0 .. ny) {
       foreach (tx; 0 .. nx) {
-        with (matrix[tx][ty]) {
-          x = tx;
-          y = ty;
-          color = 0;
-        }
+        matrix[tx][ty] = Puyo.init;
       }
-      newPuyo();
     }
   }
 
   void draw() const {
-    foreach (ref line; matrix) {
-      foreach (ref puyo; line) {
-        puyo.draw();
+    foreach (x, ref line; matrix) {
+      foreach (y, ref puyo; line) {
+        puyo.draw(x, y);
       }
     }
   }
@@ -85,14 +74,13 @@ struct Board {
           swap(x, y, x, y + 1);
           changed = true;
         } else {
-          matrix[x][y].canControl = false;
+          matrix[x][y].controllable = false;
           matrix[x][y].center = false;
         }
       }
     }
     return changed;
   }
-
 
   // Wipes <= 4 consecutive puyos.
   int wipe() {
@@ -110,7 +98,7 @@ struct Board {
     foreach (x; 0 .. nx) {
       foreach (y; 0 .. ny) {
         if (del[x][y]) {
-          matrix[x][y] = Puyo(x, y);
+          matrix[x][y] = Puyo.init;
         }
       }
     }
@@ -119,31 +107,30 @@ struct Board {
 
   bool gameover() const {
     Puyo puyo = matrix[matrix.length / 2][0];
-    if (!puyo.empty && !puyo.canControl) return true;
+    if (!puyo.empty && !puyo.controllable) return true;
     puyo = matrix[matrix.length / 2 + 1][0];
-    if (!puyo.empty && !puyo.canControl) return true;
+    if (!puyo.empty && !puyo.controllable) return true;
     return false;
   }
 
   void newPuyo() {
     if (gameover) return;
-    add(Puyo(/*x=*/matrix.length / 2,
-             /*y=*/0,
+
+    matrix[matrix.length / 2][0] = Puyo(
              /*color=*/color.front[0][0],
-             /*canControl=*/true,
-             /*center=*/true));
-    add(Puyo(/*x=*/matrix.length / 2 + 1,
-             /*y=*/0,
+             /*controllable=*/true,
+             /*center=*/true);
+    matrix[matrix.length / 2 + 1][0] = Puyo(
              /*color=*/color.front[0][1],
-             /*canControl=*/true,
-             /*center=*/false));
+             /*controllable=*/true,
+             /*center=*/false);
     color.popFront();
   }
 
   void left() {
     foreach (x; 0 .. nx) {
       foreach (y; 0 .. ny) {
-        if (matrix[x][y].canControl) {
+        if (matrix[x][y].controllable) {
           if (empty(x - 1, y)) {
             swap(x, y, x - 1, y);
           }
@@ -155,7 +142,7 @@ struct Board {
   void right() {
     foreach_reverse (x; 0 .. nx) {
       foreach (y; 0 .. ny) {
-        if (matrix[x][y].canControl) {
+        if (matrix[x][y].controllable) {
           if (empty(x + 1, y)) {
             swap(x, y, x + 1, y);
           }
@@ -169,10 +156,10 @@ struct Board {
       foreach (y; 0 .. ny) {
         if (matrix[x][y].center) {
           // Rotate clockwise.
-          if (swapInControlToEmpty(x - 1, y, x, y + 1)) return;
-          if (swapInControlToEmpty(x + 1, y, x, y - 1)) return;
-          if (swapInControlToEmpty(x, y - 1, x - 1, y)) return;
-          if (swapInControlToEmpty(x, y + 1, x + 1, y)) return;
+          if (swapControllableToEmpty(x - 1, y, x, y + 1)) return;
+          if (swapControllableToEmpty(x + 1, y, x, y - 1)) return;
+          if (swapControllableToEmpty(x, y - 1, x - 1, y)) return;
+          if (swapControllableToEmpty(x, y + 1, x + 1, y)) return;
           // Controllable but cannot be rotated.
           return;
         }
@@ -183,12 +170,6 @@ struct Board {
   auto nextColors() const { return color.front; }
 
  private:
-  enum ny = w4.screenSize / unit;
-  enum nx = w4.screenSize / unit - leftMargin;
-
-  Puyo[ny][nx] matrix;
-  RandomColor color;
-
   int numConsective(int x, int y, ushort color) {
     if (empty(x, y) || matrix[x][y].color != color) return 0;
     matrix[x][y].color = 0;
@@ -201,10 +182,6 @@ struct Board {
     return count;
   }
 
-  void add(Puyo puyo) {
-    matrix[puyo.x][puyo.y] = puyo;
-  }
-
   bool empty(int x, int y) const {
     if (0 <= x && x < nx && 0 <= y && y < ny) {
       auto puyo = matrix[x][y];
@@ -215,23 +192,22 @@ struct Board {
 
   void swap(int xa, int ya, int xb, int yb) {
     Puyo a = matrix[xa][ya];
-    a.x = xb;
-    a.y = yb;
-
     Puyo b = matrix[xb][yb];
-    b.x = xa;
-    b.y = ya;
-
     matrix[xa][ya] = b;
     matrix[xb][yb] = a;
   }
 
   /// Returns true if swapped.
-  bool swapInControlToEmpty(int xsrc, int ysrc, int xdst, int ydst) {
-    if (!empty(xsrc, ysrc) && matrix[xsrc][ysrc].canControl && empty(xdst, ydst)) {
+  bool swapControllableToEmpty(int xsrc, int ysrc, int xdst, int ydst) {
+    if (!empty(xsrc, ysrc) && matrix[xsrc][ysrc].controllable && empty(xdst, ydst)) {
       swap(xsrc, ysrc, xdst, ydst);
       return true;
     }
     return false;
   }
+
+  enum ny = w4.screenSize / unit;
+  enum nx = w4.screenSize / unit - leftMargin;
+  Puyo[ny][nx] matrix;
+  RandomColor color;
 }
