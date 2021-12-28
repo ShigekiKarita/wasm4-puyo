@@ -51,9 +51,9 @@ struct RandomColor {
 
 struct Board {
   void reset() {
-    foreach (ty; 0 .. ny) {
-      foreach (tx; 0 .. nx) {
-        matrix[tx][ty] = Puyo.init;
+    foreach (y; 0 .. ny) {
+      foreach (x; 0 .. nx) {
+        matrix[x][y] = Puyo.init;
       }
     }
   }
@@ -68,8 +68,8 @@ struct Board {
 
   bool fall() {
     bool changed = false;
-    foreach_reverse (y; 0 .. 20) {
-      foreach (x; 0 .. 20 - leftMargin) {
+    foreach_reverse (y; 0 .. ny) {
+      foreach (x; 0 .. nx) {
         if (!empty(x, y) && empty(x, y + 1)) {
           swap(x, y, x, y + 1);
           changed = true;
@@ -117,13 +117,9 @@ struct Board {
     if (gameover) return;
 
     matrix[matrix.length / 2][0] = Puyo(
-             /*color=*/color.front[0][0],
-             /*controllable=*/true,
-             /*center=*/true);
+        /*color=*/color.front[0][0], /*controllable=*/true, /*center=*/true);
     matrix[matrix.length / 2 + 1][0] = Puyo(
-             /*color=*/color.front[0][1],
-             /*controllable=*/true,
-             /*center=*/false);
+        /*color=*/color.front[0][1], /*controllable=*/true, /*center=*/false);
     color.popFront();
   }
 
@@ -173,13 +169,12 @@ struct Board {
   int numConsective(int x, int y, ushort color) {
     if (empty(x, y) || matrix[x][y].color != color) return 0;
     matrix[x][y].color = 0;
-    auto count = 1
+    scope (exit) matrix[x][y].color = color;
+    return 1
         + numConsective(x - 1, y, color)
         + numConsective(x + 1, y, color)
         + numConsective(x, y - 1, color)
         + numConsective(x, y + 1, color);
-    matrix[x][y].color = color;
-    return count;
   }
 
   bool empty(int x, int y) const {
@@ -192,14 +187,14 @@ struct Board {
 
   void swap(int xa, int ya, int xb, int yb) {
     Puyo a = matrix[xa][ya];
-    Puyo b = matrix[xb][yb];
-    matrix[xa][ya] = b;
+    matrix[xa][ya] = matrix[xb][yb];
     matrix[xb][yb] = a;
   }
 
   /// Returns true if swapped.
   bool swapControllableToEmpty(int xsrc, int ysrc, int xdst, int ydst) {
-    if (!empty(xsrc, ysrc) && matrix[xsrc][ysrc].controllable && empty(xdst, ydst)) {
+    if (!empty(xsrc, ysrc) && matrix[xsrc][ysrc].controllable
+        && empty(xdst, ydst)) {
       swap(xsrc, ysrc, xdst, ydst);
       return true;
     }
